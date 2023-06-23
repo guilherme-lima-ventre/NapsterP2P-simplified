@@ -6,22 +6,30 @@ import threading as th
 class Peer:
 
     def __init__(self):
-        self.ip = input()
-        # self.ip = '127.0.1.' + input()
-        self.port = int(input())
-        # self.port = 2220 + int(input())
-        self.path_folder = input()
-        # self.path_folder = rf'PEERS_FOLDERS\PEER{input()}'
+        # RECEBE IP, PORTA E PASTA DOS ARQUIVOS
+        # self.ip = input()
+        # self.port = int(input())
+        # self.path_folder = input()
+        self.ip = '127.1.1.' + input()
+        self.port = 1110 + int(input())
+        self.path_folder = r'PEERS_FOLDERS/PEER' + input()
 
+        # CHECA SE A PASTA EXISTE E CRIA LISTA DE ARQUIVOS
         if os.path.exists(self.path_folder):
             self.files = os.listdir(self.path_folder)
+        # SE NÃO EXISTE, CRIA A PASTA E A DEFINE COMO VAZIA
         else:
             os.mkdir(self.path_folder)
             self.files = []
 
+        # INICIALIZAÇÃO DE VÁRIAVEIS
         self.file_to_search = ''
         self.join_request_done = False
+        self.search_request_done = False
+        self.download_request_done = False
+        self.update_request_done = False
 
+        # INICIALIZA O PEER E CONECTA AO SERVER
         self.peer = socket.socket()
         self.peer.connect(('127.0.0.1', 1099))
 
@@ -35,22 +43,24 @@ class Peer:
                 print('O QUE DESEJA FAZER? [JOIN, SEARCH, DOWNLOAD]')
                 request = input()
                 
+                # ENVIA AO SERVIDOR O REQUEST [JOIN, SEARCH OU DOWNLOAD]
                 self.peer.send(json.dumps(request).encode())
 
                 if request == 'JOIN' and not self.join_request_done:
                     self.join_request()
                     self.join_request_done = True       
 
-                    # cria thread para o peer aceitar solicitação de download
+                    # CRIA THREAD PARA FAZER UPLOAD SE SOLICITADO
                     download_thread = th.Thread(target=self.download_recv_request)
                     download_thread.start()                            
 
                 elif request == 'SEARCH':
-                    self.peers_with_file = self.search_request()
+                    self.search_request()
 
                 elif request == 'DOWNLOAD':
                     self.download_send_request()
 
+                    # SOLICITA O UPDATE
                     self.peer.send(json.dumps('UPDATE').encode())
 
                     self.update_request()     
@@ -59,91 +69,100 @@ class Peer:
                 break
 
     def join_request(self):
-        # cria variavel com as informações do peer
-        peer_files = {'files': self.files}
+        # LISTA COM ADDRESS E OS ARQUIVOS DO PEER
+        peer_infos = {
+            'addr': (self.ip, self.port)
+            ,'files': self.files
+            }
 
-        # envia uma requisição de join pro servidor com todas suas informações (lista de nomes de arquivos)
-        self.peer.send(json.dumps(peer_files).encode())
+        # ENVIA PARA O SERVIDOR ESSA LISTA
+        self.peer.send(json.dumps(peer_infos).encode())
         
-        # deve esperar o 'JOIN_OK'
+        # AGUARDA O 'JOIN_OK'
         if json.loads(self.peer.recv(1024).decode()) == 'JOIN_OK':
             print(f"Sou peer {self.ip}:{self.port} com arquivos {' '.join(self.files)}")
             return
     
     def search_request(self):
-        # envia uma requisição de search pro servidor com o nome do arquivo que deseja baixar
+        # DEFINE O ARQUIVO A SER PESQUISADO NOS OUTROS PEERS
         self.file_to_search = input()
 
+        # ENVIA PARA O SERVIDOR ESSE ARQUIVO
         self.peer.send(json.dumps(self.file_to_search).encode())
 
+        # RECEBE LISTA DE PEERS COM OS ARQUIVOS
         peers_with_file = json.loads(self.peer.recv(1024).decode())
         peers_with_file = [ip + ':' + str(port) for ip, port in peers_with_file]
-
-        # recebera uma lista
         print(f"Peers com arquivo solicitado: {' '.join(peers_with_file)}")
 
-        return peers_with_file
+        return
     
     def update_request(self):
         # APÓS O ARQUIVO SER BAIXADO
-        # envia uma requisição de update pro servidor com o nome do arquivo que deseja adicionar a sua lista
-        file_to_update = input()
+        # ENVIA PARA O SERVIDOR O ARQUIVO A SER ATUALIZADO
+        self.peer.send(json.dumps(self.file_to_search).encode())
 
-        self.peer.send(json.dumps(file_to_update).encode())
-
-        # deve esperar o 'UPDATE_OK'
+        # AGUARDA O 'UPDATE_OK'
         if json.loads(self.peer.recv(1024).decode()) == 'UPDATE_OK':
             return
     
     def download_send_request(self):
+        # CRIA NOVO SOCKET PARA RECEBER CONEXAO
+        peer_client = socket.socket()
+
+        # RECEBE IP E PORTA DO PEER QUE CONTEM O ARQUIVO
         ip_download = input()
         port_download = int(input())
 
-        self.peer.connect((ip_download, port_download))
-        self.peer.send(json.dumps(self.file_to_search).encode())
-        print(f'CONNECTOU E SOLICITOU O ARQUIVO PARA {(ip_download, port_download)}')
-        
-        with open(self.path_folder + '\\' + self.file_to_search, 'wb') as new_file:
-            while True:
-                data = self.peer.recv(1024).decode()
+        # ESTABELECE CONEXAO
+        peer_client.connect((ip_download, port_download))
+        peer_client.send(json.dumps(self.file_to_search).encode())
 
-                if data:
-                    new_file.write(json.loads(data))
-                else: 
-                    break
+        # DEFINE CAMINHO ONDE O ARQUIVO SERA BAIXADO
+        path_file = self.path_folder + '\\' + self.file_to_search
+        
+        with open(path_file, 'wb') as new_file:
+            while True:
+                data_size = int(peer_client.recv(1024).decode())
+                peer_client.send('OK'.encode())
+
+                if data_size != 0:
+                    data = peer_client.recv(data_size)
+                    new_file.write(data)
+                else:
+                    break            
 
         print(f"Arquivo {self.file_to_search} baixado com sucesso na pasta {self.path_folder}")
+
+        peer_client.close()
 
         return
     
     def download_recv_request(self):
-        self.peer_server = socket.socket()
+        peer_server = socket.socket()
 
-        self.peer_server.bind((self.ip, self.port))
+        peer_server.bind((self.ip, self.port))
 
-        self.peer_server.listen()
-
-        print(f'SOCKET PEER_SERVER: {self.peer_server.getsockname()}')
+        peer_server.listen()
 
         while True:
             try:
-                peer, peer_addr = self.peer_server.accept()
+                peer, peer_addr = peer_server.accept()
 
                 file_to_search = json.loads(peer.recv(1024).decode())
 
                 path_file = self.path_folder + '\\' + file_to_search
 
                 if os.path.exists(path_file):
-                    with open(path_file, 'r') as file:
+                    with open(path_file, 'rb') as file:
                         while True:
                             data = file.read(1024)
+                            peer.send(str(len(data)).encode())
 
-                            if data:
-                                peer.send(json.dumps(data).encode())
-
+                            if data and peer.recv(2048).decode() == 'OK':
+                                peer.send(data)
                             else:
-                                print(f'ENVIADO ARQUIVO {file_to_search}')
-                                break 
+                                break
 
             except KeyboardInterrupt:
                 break

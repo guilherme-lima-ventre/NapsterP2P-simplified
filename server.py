@@ -6,9 +6,9 @@ import threading as th
 class Server:
 
     def __init__(self):
-        # self.ip = str(input()) # 127.0.0.1
+        # self.ip = input() # 127.0.0.1
         self.ip = '127.0.0.1'
-        # self.port = input() # 1099
+        # self.port = int(input()) # 1099
         self.port = 1099
 
         self.peers_list = []
@@ -49,12 +49,13 @@ class Server:
 
     def join_request(self, peer, peer_addr):
         # recebe todas as infos do peer (ip, porta, lista de nome de arquivos)
-        client_files = json.loads(peer.recv(1024).decode())
+        peer_infos = json.loads(peer.recv(1024).decode())
 
         # adiciona um novo peer na lista
         self.peers_list.append({
-            'addr':peer_addr,
-            'files':client_files['files']
+            'addr':peer_infos['addr']
+            ,'addr_conn': peer_addr
+            ,'files':peer_infos['files']
             })
         
         peer.send(json.dumps('JOIN_OK').encode())
@@ -67,8 +68,12 @@ class Server:
         # recebe do peer solicitante o nome do arquivo a ser procurado
         file_to_search = json.loads(peer.recv(1024).decode())
 
+        # procura na lista pelo peer que solicitou o arquivo
+        for peer_connected in self.peers_list:
+            if peer_connected['addr_conn'] == peer_addr:
+                peer_searching = peer_connected['addr']
         # arquivo solicitado
-        print(f"Peer {peer_addr[0]}:{peer_addr[1]} solicitou arquivo {file_to_search}")
+        print(f"Peer {peer_searching[0]}:{peer_searching[1]} solicitou arquivo {file_to_search}")
         
         # procura na lista de peer pelos que contenham o arquivo X
         peers_with_file = [peer_connected['addr'] for peer_connected in self.peers_list if file_to_search in peer_connected['files']]
@@ -81,11 +86,10 @@ class Server:
     def update_request(self, peer, peer_addr):
         # recebe do peer nome do arquivo a ser atualizado
         file_to_update = json.loads(peer.recv(1024).decode())
-        print(f'PEER PARA SER ATUALIZADO: {peer_addr}')
 
         # procura na lista pelo peer e adiciona o arquivo na sua lista
         for peer_connected in self.peers_list:
-            if peer_connected['addr'] == peer_addr:
+            if peer_connected['addr_conn'] == peer_addr and file_to_update not in peer_connected['files']:
                 peer_connected['files'].append(file_to_update)
 
         # retorna 'UPDATE_OK'
