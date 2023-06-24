@@ -6,7 +6,7 @@ import threading as th
 class Peer:
 
     def __init__(self):
-        # RECEBE IP, PORTA E PASTA DOS ARQUIVOS
+        # INICIALIZA O PEER COM IP, PORTA E PASTA COM OS ARQUIVOS
         # self.ip = input()
         # self.port = int(input())
         # self.path_folder = input()
@@ -41,7 +41,7 @@ class Peer:
         while True:
             try:
                 print('O QUE DESEJA FAZER? [JOIN, SEARCH, DOWNLOAD]')
-                request = input()
+                request = input().upper()
                 
                 # ENVIA AO SERVIDOR O REQUEST [JOIN, SEARCH OU DOWNLOAD]
                 self.peer.send(json.dumps(request).encode())
@@ -121,11 +121,16 @@ class Peer:
         # DEFINE CAMINHO ONDE O ARQUIVO SERA BAIXADO
         path_file = self.path_folder + '\\' + self.file_to_search
         
+        # CRIA UM NOVO ARQUIVO VAZIO NO FOLDER DO PEER
         with open(path_file, 'wb') as new_file:
             while True:
+                # RECEBE DO OUTRO PEER O TAMANHO DO TRECHO DO ARQUIVO 
                 data_size = int(peer_client.recv(1024).decode())
+                # INDICA QUE RECEBEU A INFORMAÇÃO
                 peer_client.send('OK'.encode())
 
+                # ENQUANTO HOUVER CONTEUDO ARQUIVO QUE SERA ENVIADO
+                # RECEBE ESSE CONTEUDO E ESCREVE NO NOVO ARQUIVO EM BYTES
                 if data_size != 0:
                     data = peer_client.recv(data_size)
                     new_file.write(data)
@@ -134,11 +139,13 @@ class Peer:
 
         print(f"Arquivo {self.file_to_search} baixado com sucesso na pasta {self.path_folder}")
 
+        # APOS RECEBER O ARQUIVO ENCERRA A CONEXAO
         peer_client.close()
 
         return
     
     def download_recv_request(self):
+        # INICIALIZA UM SOCKET PARA PODER ENVIAR ARQUIVOS SOLICITADOS
         peer_server = socket.socket()
 
         peer_server.bind((self.ip, self.port))
@@ -147,18 +154,24 @@ class Peer:
 
         while True:
             try:
+                # AGUARDA E ACEITA SOLICITAÇÕES
                 peer, peer_addr = peer_server.accept()
 
+                # RECEBE O ARQUIVO A SER BAIXADO
                 file_to_search = json.loads(peer.recv(1024).decode())
 
                 path_file = self.path_folder + '\\' + file_to_search
 
+                # CHECA SE REALMENTE POSSUI O ARQUIVO
                 if os.path.exists(path_file):
+                    # ABRE SEU ARQUIVO, FAZENDO SUA LEITURA EM BYTES
                     with open(path_file, 'rb') as file:
                         while True:
                             data = file.read(1024)
+                            # ENVIA O TAMANHO DO TRECHO QUE SERA ENVIADO
                             peer.send(str(len(data)).encode())
 
+                            # SE O PEER RECEBEU O TAMANHO, ENVIA O CONTEUDO
                             if data and peer.recv(2048).decode() == 'OK':
                                 peer.send(data)
                             else:
