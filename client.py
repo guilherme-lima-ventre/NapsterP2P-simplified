@@ -11,14 +11,8 @@ class Peer:
         self.port = int(input())
         self.path_folder = input()
 
-        # CHECA SE A PASTA EXISTE E CRIA LISTA DE ARQUIVOS
-        if os.path.exists(self.path_folder):
-            self.files = os.listdir(self.path_folder)
-            self.files = [file for file in self.files if os.path.isfile(self.path_folder + '\\' + file)]
-        # SE NÃO EXISTE, CRIA A PASTA E A DEFINE COMO VAZIA
-        else:
-            os.mkdir(self.path_folder)
-            self.files = []
+        # DEFINE ARQUIVOS NA PASTA DO PEER
+        self.files = self.files_in_folder()
 
         # INICIALIZAÇÃO DE VÁRIAVEIS
         self.file_to_search = ''
@@ -28,13 +22,25 @@ class Peer:
 
         # INICIALIZA O PEER E CONECTA AO SERVER
         self.peer = socket.socket()
-        self.peer.connect(('127.0.0.1', 1080))
+        self.peer.connect(('127.0.0.1', 9999))
 
         # VAI ATÉ O MENU DE REQUESTS
         self.set_request()
 
         # CASO INTERROMPA O MENU, ENCERRA A CONEXÃO
         self.peer.close()
+
+    def files_in_folder(self):
+        # CHECA SE A PASTA EXISTE E CRIA LISTA DE ARQUIVOS
+        if os.path.exists(self.path_folder):
+            files = os.listdir(self.path_folder)
+            files = [file for file in files if os.path.isfile(self.path_folder + '\\' + file)]
+        # SE NÃO EXISTE, CRIA A PASTA E A DEFINE COMO VAZIA
+        else:
+            os.mkdir(self.path_folder)
+            files = []
+
+        return files
 
     def set_request(self):
         while True:
@@ -45,6 +51,7 @@ class Peer:
                 if request == 'JOIN':
                     if self.join_request_done:
                         print('JOIN JA REALIZADO')
+
                     else:
                         # ENVIA AO SERVIDOR O JOIN REQUEST 
                         self.peer.send(request.encode())
@@ -58,23 +65,37 @@ class Peer:
                 elif request == 'SEARCH':
                     if not self.join_request_done:
                         print('JOIN NAO REALIZADO')
+
                     else:
                         # ENVIA AO SERVIDOR O SEARCH REQUEST 
                         self.peer.send(request.encode())
 
-                        self.search_request()
-                        self.search_request_done = True
+                        peer_has_file, peers_with_file = self.search_request()
+
+                        if peer_has_file:
+                            self.search_request_done = True
+
+                        else:
+                            self.search_request_done = False
+
                         self.download_request_done = False
 
                 elif request == 'DOWNLOAD':
                     if not self.join_request_done:
                         print('JOIN NAO REALIZADO')
+
                     elif not self.search_request_done:
-                        print('SEARCH NAO REALIZADO')
-                    elif not self.search_request_done:
-                        print('DOWNLOAD JA REALIZADO')
+                        print('SEARCH NAO REALIZADO OU SEM PEER COM O ARQUIVO SOLICITADO, FACA OUTRO SEARCH')
+
+                    elif self.download_request_done:
+                        print('DOWNLOAD JA REALIZADO, FACA NOVO SEARCH')         
+
                     else:
-                        self.download_request()
+                        if self.file_to_search in self.files:
+                            print('PEER JA POSSUI O ARQUIVO, ELE SERÁ SOBRESCRITO')
+                        
+                        self.download_request(peers_with_file)
+
                         self.download_request_done = True
 
                         # SOLICITA O UPDATE
@@ -116,7 +137,9 @@ class Peer:
         peers_with_file = [ip + ':' + str(port) for ip, port in peers_with_file]
         print(f"Peers com arquivo solicitado: {' '.join(peers_with_file)}")
 
-        return
+        if len(peers_with_file) > 0:
+            return True, peers_with_file
+        return False, []
     
     def update_request(self):
         # APÓS O ARQUIVO SER BAIXADO
@@ -125,9 +148,11 @@ class Peer:
 
         # AGUARDA O 'UPDATE_OK'
         if self.peer.recv(1024).decode() == 'UPDATE_OK':
+            # ATUALIZA ARQUIVOS DO PEER
+            self.files = self.files_in_folder()
             return
     
-    def download_request(self,):
+    def download_request(self, peers_with_file):
         # CRIA NOVO SOCKET PARA RECEBER CONEXAO
         peer_client = socket.socket()
 
@@ -135,6 +160,15 @@ class Peer:
         ip_download = input()
         port_download = int(input())
 
+        while ip_download + ':' + str(port_download) not in peers_with_file:
+            
+            print('PEER NAO TEM O ARQUIVO, DIGITE IP E PORTA NOVAMENTE')
+            ip_download = input()
+            port_download = int(input())
+
+        if ip_download == self.ip and port_download == self.port:
+                        print('PEER JA TEM O ARQUIVO')
+                        return
         try:
             # ESTABELECE CONEXAO
             peer_client.connect((ip_download, port_download))
@@ -171,7 +205,7 @@ class Peer:
         except:
             print(f'CONEXAO COM PEER {ip_download + ":" + str(port_download)} NÃO PODE SER ESTABELECIDA, DIGITE NOVAMENTE IP E PORTA')
             peer_client.close()
-            self.download_request()
+            self.download_request(peers_with_file)
     
     def upload_request(self):
         # INICIALIZA UM SOCKET PARA PODER ENVIAR ARQUIVOS SOLICITADOS

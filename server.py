@@ -97,10 +97,15 @@ class Server:
 
         # PROCURA PELO PEER QUE FEZ A SOLICITAÇÃO
         for connected_peer in self.connected_peers_list:
-            # SE ENCONTRAR E ELE JA NAO POSSUIR O ARQUIVO
-            if connected_peer['addr_conn'] == peer_addr and file_to_update not in connected_peer['files']:
-                # ADICIONA O ARQUIVO NA LISTA
-                connected_peer['files'].append(file_to_update)
+            # SE ENCONTRAR
+            if connected_peer['addr_conn'] == peer_addr:
+                # E ELE JA NAO POSSUIR O ARQUIVO
+                if file_to_update not in connected_peer['files']:
+                    # ADICIONA O ARQUIVO NA LISTA
+                    connected_peer['files'].append(file_to_update)
+                else:
+                    pass
+                    # PEER JA TINHA O ARQUIVO
 
         # RETORNA O 'UPDATE_OK'
         peer.send('UPDATE_OK'.encode())
