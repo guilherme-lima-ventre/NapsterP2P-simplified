@@ -22,7 +22,7 @@ class Peer:
 
         # INICIALIZA O PEER E CONECTA AO SERVER
         self.peer = socket.socket()
-        self.peer.connect(('127.0.0.1', 9999))
+        self.peer.connect(('127.0.0.1', 1099))
 
         # VAI ATÉ O MENU DE REQUESTS
         self.set_request()
@@ -243,7 +243,7 @@ class Peer:
                     peer.send(str(len(data)).encode())
 
                     # SE O PEER RECEBEU O TAMANHO, ENVIA O CONTEUDO
-                    if data and peer.recv(2048).decode() == 'OK':
+                    if data and peer.recv(1024).decode() == 'OK':
                         peer.send(data)
                     else:
                         break
